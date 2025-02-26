@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avaturn Avatar Demonstration</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #f5f5f5;
+        overflow: hidden; /* Prevent scrollbars */
+      }
+      
+      #avatar-container {
+        width: 800px; 
+        height: 600px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        background-color: white;
+        position: relative;
+        overflow: hidden; /* Ensure content doesn't overflow */
+        z-index: 1; /* Ensure it's above other elements */
+      }
+
+      /* Make sure the canvas is visible */
+      #avatar-container canvas {
+        display: block !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+
+      #loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-family: Arial, sans-serif;
+        font-size: 18px;
+        color: #333;
+        z-index: 2;
+      }
+
+      .error {
+        color: #e74c3c;
+        text-align: center;
+        padding: 20px;
+        font-family: Arial, sans-serif;
+        z-index: 2;
+      }
+      
+      #debug-info {
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        font-family: monospace;
+        max-width: 80%;
+        max-height: 200px;
+        overflow: auto;
+        z-index: 1000;
+      }
+
+      /* Status indicator */
+      #status {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 5px 10px;
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 4px;
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        z-index: 3;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="avatar-container">
+      <div id="loading">Loading Avaturn avatar...</div>
+      <div id="status" style="display: none;">Avatar Ready</div>
+    </div>
+    
+    <div id="debug-info"></div>
+    
+    <script type="module">
+      // Import the Avaturn SDK from the local package
+      import { AvaturnHead } from '@avaturn-live/web-sdk';
+      
+      // Create debug logger
+      const debugInfo = document.getElementById('debug-info') || document.createElement('div');
+      if (!document.getElementById('debug-info')) {
+        debugInfo.id = 'debug-info';
+        document.body.appendChild(debugInfo);
+      }
+      
+      function logDebug(message) {
+        console.log(message);
+        const timestamp = new Date().toLocaleTimeString();
+        debugInfo.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+        debugInfo.scrollTop = debugInfo.scrollHeight;
+      }
+      
+      // Initialize the avatar immediately
+      (async function() {
+        logDebug("Starting Avaturn initialization");
+        
+        try {
+          // Get environment from URL parameters
+          const urlParams = new URLSearchParams(window.location.search);
+          const env = urlParams.get('env') || 'local';
+          
+          // Set base URL based on environment
+          let baseUrl;
+          switch(env) {
+            case 'prod':
+              baseUrl = 'https://chatwith.humains.com';
+              break;
+            case 'dev':
+              baseUrl = 'https://humains-core-dev.appspot.com';
+              break;
+            default: // local
+              baseUrl = 'http://localhost:5050';
+          }
+          
+          logDebug(`Environment: ${env}, Base URL: ${baseUrl}`);
+          
+          // Initialize the avatar
+          const domElement = document.getElementById("avatar-container");
+          const loadingElement = document.getElementById("loading");
+          const statusElement = document.getElementById("status");
+          
+          if (!domElement) {
+            throw new Error("Avatar container element not found!");
+          }
+          
+          // Fetch the session token from the API
+          logDebug(`Fetching session token from: ${baseUrl}/exp/avaturn-token`);
+          const tokenUrl = `${baseUrl}/exp/avaturn-token`;
+          
+          // Actual token fetch
+          logDebug("Sending token request...");
+          const response = await fetch(tokenUrl);
+          logDebug(`Token response status: ${response.status} ${response.statusText}`);
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch token: ${response.status} ${response.statusText}`);
+          }
+          
+          const responseText = await response.text();
+          logDebug(`Raw response: ${responseText.substring(0, 100)}...`);
+          
+          let data;
+          try {
+            data = JSON.parse(responseText);
+            logDebug(`Parsed response: ${JSON.stringify(data).substring(0, 100)}...`);
+          } catch (parseError) {
+            throw new Error(`Failed to parse response as JSON: ${parseError.message}`);
+          }
+          
+          // Extract the token from the response
+          const sessionToken = data.token;
+          if (!sessionToken) {
+            logDebug(`Response data keys: ${Object.keys(data).join(', ')}`);
+            throw new Error("No token found in the response");
+          }
+          
+          logDebug(`Session token obtained: ${sessionToken.substring(0, 10)}...`);
+          
+          // Initialize Avaturn with the token
+          logDebug("Creating Avaturn instance...");
+          const avatar = new AvaturnHead(domElement, {
+            apiHost: "https://api.avaturn.live",
+            sessionToken: sessionToken,
+            preloadBundle: true, // Changed to true to ensure assets are loaded
+            preconnect: true,    // Changed to true for better performance
+            keepAlive: true,     // Changed to true to maintain connection
+          });
+          
+          logDebug("Calling avatar.init()...");
+          await avatar.init();
+          logDebug("Avaturn initialized successfully!");
+          
+          // Remove loading message and show status
+          if (loadingElement) {
+            loadingElement.style.display = 'none';
+          }
+          
+          if (statusElement) {
+            statusElement.style.display = 'block';
+          }
+          
+          // Check if any canvas elements were created
+          setTimeout(() => {
+            const canvasElements = domElement.querySelectorAll('canvas');
+            logDebug(`Found ${canvasElements.length} canvas elements in the container`);
+            
+            // Log DOM structure for debugging
+            logDebug(`Container children: ${domElement.children.length}`);
+            for (let i = 0; i < domElement.children.length; i++) {
+              logDebug(`Child ${i}: ${domElement.children[i].tagName}`);
+            }
+            
+            // Force redraw if needed
+            domElement.style.display = 'none';
+            setTimeout(() => {
+              domElement.style.display = 'block';
+              logDebug("Forced container redraw");
+            }, 100);
+          }, 1000);
+          
+        } catch (error) {
+          logDebug(`ERROR: ${error.message}`);
+          console.error("Detailed error:", error);
+          
+          // Display error message to user
+          const loadingElement = document.getElementById("loading");
+          if (loadingElement) {
+            loadingElement.remove();
+          }
+          
+          const domElement = document.getElementById("avatar-container");
+          const errorElement = document.createElement('div');
+          errorElement.className = 'error';
+          errorElement.innerHTML = `
+            <h3>Error Loading Avatar</h3>
+            <p>${error.message || 'Failed to initialize Avaturn avatar'}</p>
+            <p>Please check the debug panel for more details.</p>
+          `;
+          domElement.appendChild(errorElement);
+        }
+      })();
+    </script>
+  </body>
+</html>
