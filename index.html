@@ -68,6 +68,27 @@
         max-height: 200px;
         overflow: auto;
         z-index: 1000;
+        transition: opacity 0.3s ease;
+      }
+      
+      #debug-info.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #debug-toggle {
+        position: fixed;
+        bottom: 10px;
+        right: 10px;
+        z-index: 1001;
+        padding: 5px 10px;
+        background-color: #333;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: Arial, sans-serif;
+        font-size: 12px;
       }
 
       /* Status indicator */
@@ -83,15 +104,94 @@
         font-size: 12px;
         z-index: 3;
       }
+      
+      /* Speech recognition */
+      #speech-container {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        background-color: rgba(255, 255, 255, 0.9);
+        border-radius: 8px;
+        padding: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        z-index: 4;
+        font-family: Arial, sans-serif;
+      }
+      
+      #speech-text {
+        margin-bottom: 10px;
+        min-height: 60px;
+        max-height: 120px;
+        overflow-y: auto;
+        font-size: 16px;
+        line-height: 1.4;
+      }
+      
+      #speech-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      #mic-status {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: #ccc;
+        margin-right: 8px;
+      }
+      
+      #mic-status.listening {
+        background-color: #f44336;
+        animation: pulse 1.5s infinite;
+      }
+      
+      @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+      }
+      
+      button {
+        padding: 8px 16px;
+        background-color: #2196F3;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: Arial, sans-serif;
+      }
+      
+      button:hover {
+        background-color: #0b7dda;
+      }
+      
+      button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body>
     <div id="avatar-container">
       <div id="loading">Loading Avaturn avatar...</div>
       <div id="status" style="display: none;">Avatar Ready</div>
+      <div id="speech-container" style="display: none;">
+        <div id="speech-text">Speak to see your words here...</div>
+        <div id="speech-controls">
+          <div>
+            <span id="mic-status"></span>
+            <span id="mic-label">Microphone: Ready</span>
+          </div>
+          <button id="toggle-speech">Start Listening</button>
+        </div>
+      </div>
     </div>
     
     <div id="debug-info"></div>
+    <button id="debug-toggle">Hide Debug</button>
     
     <script type="module">
       // Import the Avaturn SDK from the local package
@@ -104,11 +204,123 @@
         document.body.appendChild(debugInfo);
       }
       
+      // Setup debug toggle button
+      const debugToggle = document.getElementById('debug-toggle');
+      let debugVisible = true;
+      
+      debugToggle.addEventListener('click', () => {
+        debugVisible = !debugVisible;
+        if (debugVisible) {
+          debugInfo.classList.remove('hidden');
+          debugToggle.textContent = 'Hide Debug';
+        } else {
+          debugInfo.classList.add('hidden');
+          debugToggle.textContent = 'Show Debug';
+        }
+      });
+      
       function logDebug(message) {
         console.log(message);
         const timestamp = new Date().toLocaleTimeString();
         debugInfo.innerHTML += `<div>[${timestamp}] ${message}</div>`;
         debugInfo.scrollTop = debugInfo.scrollHeight;
+      }
+      
+      // Speech recognition setup
+      let recognition = null;
+      let isListening = false;
+      
+      function setupSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (!SpeechRecognition) {
+          logDebug("Speech recognition not supported in this browser");
+          return false;
+        }
+        
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+        
+        const speechText = document.getElementById('speech-text');
+        const micStatus = document.getElementById('mic-status');
+        const micLabel = document.getElementById('mic-label');
+        const toggleButton = document.getElementById('toggle-speech');
+        
+        recognition.onstart = function() {
+          isListening = true;
+          micStatus.classList.add('listening');
+          micLabel.textContent = 'Microphone: Listening';
+          toggleButton.textContent = 'Stop Listening';
+          logDebug("Speech recognition started");
+        };
+        
+        recognition.onend = function() {
+          isListening = false;
+          micStatus.classList.remove('listening');
+          micLabel.textContent = 'Microphone: Ready';
+          toggleButton.textContent = 'Start Listening';
+          logDebug("Speech recognition ended");
+        };
+        
+        recognition.onresult = function(event) {
+          let finalTranscript = '';
+          let interimTranscript = '';
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript;
+              logDebug(`Final transcript: ${transcript}`);
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+          
+          // Clear previous interim results first
+          const existingInterim = speechText.querySelector('.interim');
+          if (existingInterim) {
+            existingInterim.remove();
+          }
+          
+          // Add final transcript as a new paragraph
+          if (finalTranscript) {
+            const finalP = document.createElement('p');
+            finalP.textContent = finalTranscript;
+            finalP.className = 'final';
+            speechText.appendChild(finalP);
+          }
+          
+          // Add interim transcript if available
+          if (interimTranscript) {
+            const interimP = document.createElement('p');
+            interimP.textContent = interimTranscript;
+            interimP.className = 'interim';
+            interimP.style.fontStyle = 'italic';
+            interimP.style.color = '#666';
+            speechText.appendChild(interimP);
+          }
+          
+          speechText.scrollTop = speechText.scrollHeight;
+        };
+        
+        recognition.onerror = function(event) {
+          logDebug(`Speech recognition error: ${event.error}`);
+          micLabel.textContent = `Error: ${event.error}`;
+        };
+        
+        toggleButton.addEventListener('click', function() {
+          if (isListening) {
+            recognition.stop();
+          } else {
+            speechText.innerHTML = '';
+            recognition.start();
+          }
+        });
+        
+        return true;
       }
       
       // Initialize the avatar immediately
@@ -139,6 +351,7 @@
           const domElement = document.getElementById("avatar-container");
           const loadingElement = document.getElementById("loading");
           const statusElement = document.getElementById("status");
+          const speechContainer = document.getElementById("speech-container");
           
           if (!domElement) {
             throw new Error("Avatar container element not found!");
@@ -198,6 +411,15 @@
           
           if (statusElement) {
             statusElement.style.display = 'block';
+          }
+          
+          // Setup speech recognition
+          const speechSupported = setupSpeechRecognition();
+          if (speechSupported && speechContainer) {
+            speechContainer.style.display = 'block';
+            logDebug("Speech recognition UI initialized");
+          } else {
+            logDebug("Speech recognition not available");
           }
           
           // Check if any canvas elements were created
