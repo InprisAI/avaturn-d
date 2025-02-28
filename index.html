@@ -279,6 +279,9 @@
             if (event.results[i].isFinal) {
               finalTranscript += transcript;
               logDebug(`Final transcript: ${transcript}`);
+              
+              // Send the final transcript to the server
+              sendUserUtterance(transcript);
             } else {
               interimTranscript += transcript;
             }
@@ -352,6 +355,40 @@
           
           logDebug(`Environment: ${env}, Base URL: ${baseUrl}`);
           
+          // Add session_id variable to store the session ID
+          let session_id = '';
+          
+          // Function to send user utterance to the server
+          async function sendUserUtterance(utterance) {
+            try {
+              logDebug(`Sending user utterance to server: "${utterance}"`);
+              
+              const response = await fetch(`${baseUrl}/exp/avaturn-reply`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  session_id: session_id,
+                  user_utterance: utterance
+                })
+              });
+              
+              if (!response.ok) {
+                throw new Error(`Server responded with status: ${response.status}`);
+              }
+              
+              logDebug('Server response received successfully');
+              
+              // You can handle the response here if needed
+              const responseData = await response.json();
+              logDebug(`Server response: ${JSON.stringify(responseData).substring(0, 100)}...`);
+              
+            } catch (error) {
+              logDebug(`Error sending utterance to server: ${error.message}`);
+            }
+          }
+          
           // Initialize the avatar
           const domElement = document.getElementById("avatar-container");
           const loadingElement = document.getElementById("loading");
@@ -391,6 +428,14 @@
           if (!sessionToken) {
             logDebug(`Response data keys: ${Object.keys(data).join(', ')}`);
             throw new Error("No token found in the response");
+          }
+          
+          // Store the session ID from the response if available
+          if (data.session_id) {
+            session_id = data.session_id;
+            logDebug(`Session ID obtained: ${session_id}`);
+          } else {
+            logDebug('No session_id found in response, using empty string');
           }
           
           logDebug(`Session token obtained: ${sessionToken.substring(0, 10)}...`);
@@ -465,19 +510,13 @@
           // After initialization, explicitly start rendering
           try {
             // Start rendering explicitly
-            avatar.start();
+            avatar.drawUI();
             logDebug("Avatar rendering started");
             
-            // Check avatar state
-            const isReady = avatar.isReady();
-            logDebug(`Avatar ready state: ${isReady}`);
           } catch (renderError) {
             logDebug(`Error starting avatar: ${renderError.message}`);
           }
-          
-          // Add this after importing the SDK
-          logDebug(`Avaturn SDK version: ${AvaturnHead.version || 'unknown'}`);
-          
+                    
         } catch (error) {
           logDebug(`Error starting avatar: ${error.message}`);
         }
