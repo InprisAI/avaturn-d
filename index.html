@@ -258,37 +258,6 @@
           // Add session_id variable to store the session ID
           let session_id = '';
           
-          // Function to send user utterance to the server
-          window.sendUserUtterance = async function(utterance) {
-            try {
-              logDebug(`Sending user utterance to server: "${utterance}"`);
-              
-              const response = await fetch(`${baseUrl}/exp/avaturn-reply`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  session_id: session_id,
-                  user_utterance: utterance
-                })
-              });
-              
-              if (!response.ok) {
-                throw new Error(`Server responded with status: ${response.status}`);
-              }
-              
-              logDebug('Server response received successfully');
-              
-              // You can handle the response here if needed
-              const responseData = await response.json();
-              logDebug(`Server response: ${JSON.stringify(responseData).substring(0, 100)}...`);
-              
-            } catch (error) {
-              logDebug(`Error sending utterance to server: ${error.message}`);
-            }
-          }
-          
           // Initialize the avatar
           const domElement = document.getElementById("avatar-container");
           const loadingElement = document.getElementById("loading");
@@ -349,6 +318,57 @@
             preconnect: true,
             keepAlive: false,
           });
+          
+          // Function to send user utterance to the server
+          window.sendUserUtterance = async function(utterance) {
+            try {
+              logDebug(`Sending user utterance to server: "${utterance}"`);
+              
+              // Cancel all avatar tasks when user speaks
+              if (avatar && typeof avatar.cancelAllTasks === 'function') {
+                avatar.cancelAllTasks();
+                logDebug("Cancelled all avatar tasks as user is speaking");
+              }
+              
+              const response = await fetch(`${baseUrl}/exp/avaturn-reply`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  session_id: session_id,
+                  user_utterance: utterance
+                })
+              });
+              
+              if (!response.ok) {
+                throw new Error(`Server responded with status: ${response.status}`);
+              }
+              
+              logDebug('Server response received successfully');
+              
+              // Handle the response - display it in the speech text area
+              const responseData = await response.json();
+              logDebug(`Server response: ${JSON.stringify(responseData).substring(0, 100)}...`);
+              
+              // Display the response in the speech text area if it has a reply field
+              if (responseData.reply) {
+                const speechText = document.getElementById('speech-text');
+                if (speechText) {
+                  const replyP = document.createElement('p');
+                  replyP.textContent = responseData.reply;
+                  replyP.className = 'server-reply';
+                  replyP.style.color = '#4285F4'; // Google blue color
+                  replyP.style.fontWeight = 'bold';
+                  speechText.appendChild(replyP);
+                  speechText.scrollTop = speechText.scrollHeight;
+                }
+              }
+              
+            } catch (error) {
+              logDebug(`Error sending utterance to server: ${error.message}`);
+            }
+          }
           
           try {
             logDebug("Calling avatar.init()...");
