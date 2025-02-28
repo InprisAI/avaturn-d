@@ -27,13 +27,18 @@
         position: relative;
         overflow: hidden; /* Ensure content doesn't overflow */
         z-index: 1; /* Ensure it's above other elements */
+        display: flex;
+        justify-content: center;
+        align-items: center;
       }
 
-      /* Make sure the canvas is visible */
+      /* Ensure canvas is properly sized and visible */
       #avatar-container canvas {
         display: block !important;
         width: 100% !important;
         height: 100% !important;
+        object-fit: contain;
+        z-index: 2;
       }
 
       #loading {
@@ -395,14 +400,30 @@
           const avatar = new AvaturnHead(domElement, {
             apiHost: "https://api.avaturn.live",
             sessionToken: sessionToken,
-            preloadBundle: true, // Changed to true to ensure assets are loaded
-            preconnect: true,    // Changed to true for better performance
-            keepAlive: true,     // Changed to true to maintain connection
+            preloadBundle: true,
+            
+            preconnect: true,
+            keepAlive: false,
           });
           
-          logDebug("Calling avatar.init()...");
-          await avatar.init();
-          logDebug("Avaturn initialized successfully!");
+          try {
+            logDebug("Calling avatar.init()...");
+            await avatar.init();
+            logDebug("Avaturn initialized successfully!");
+            
+            // Check if avatar has a render method
+            if (typeof avatar.render === 'function') {
+              logDebug("Calling explicit render");
+              avatar.render();
+            }
+            
+            // Log available methods for debugging
+            logDebug(`Available methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(avatar)).join(', ')}`);
+          } catch (initError) {
+            logDebug(`Detailed init error: ${initError.message}`);
+            console.error("Init stack:", initError.stack);
+            throw initError;
+          }
           
           // Remove loading message and show status
           if (loadingElement) {
@@ -441,25 +462,24 @@
             }, 100);
           }, 1000);
           
-        } catch (error) {
-          logDebug(`ERROR: ${error.message}`);
-          console.error("Detailed error:", error);
-          
-          // Display error message to user
-          const loadingElement = document.getElementById("loading");
-          if (loadingElement) {
-            loadingElement.remove();
+          // After initialization, explicitly start rendering
+          try {
+            // Start rendering explicitly
+            avatar.start();
+            logDebug("Avatar rendering started");
+            
+            // Check avatar state
+            const isReady = avatar.isReady();
+            logDebug(`Avatar ready state: ${isReady}`);
+          } catch (renderError) {
+            logDebug(`Error starting avatar: ${renderError.message}`);
           }
           
-          const domElement = document.getElementById("avatar-container");
-          const errorElement = document.createElement('div');
-          errorElement.className = 'error';
-          errorElement.innerHTML = `
-            <h3>Error Loading Avatar</h3>
-            <p>${error.message || 'Failed to initialize Avaturn avatar'}</p>
-            <p>Please check the debug panel for more details.</p>
-          `;
-          domElement.appendChild(errorElement);
+          // Add this after importing the SDK
+          logDebug(`Avaturn SDK version: ${AvaturnHead.version || 'unknown'}`);
+          
+        } catch (error) {
+          logDebug(`Error starting avatar: ${error.message}`);
         }
       })();
     </script>
